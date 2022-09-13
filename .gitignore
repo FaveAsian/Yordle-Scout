@@ -1,0 +1,4 @@
+.venv
+.env
+riot_api_testing.py
+yordle_scout_test.py
