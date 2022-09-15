@@ -1,40 +1,55 @@
 import os
+from time import sleep
 from dotenv import load_dotenv
 import tweepy
-from tweepy.asynchronous.streaming import AsyncStream
+from tweepy.asynchronous.streaming import AsyncStreamingClient
 import discord 
 
-client = discord.Client()
+
 load_dotenv()
 
+intents = discord.Intents.default()
+intents.message_content = True
+client = discord.Client(intents=intents)
+
+twitter_client = tweepy.Client(bearer_token=os.getenv("BEARER_TOKEN"))
 
 @client.event
 async def on_ready():
+    stream = AsyncStreamingClient(bearer_token=os.getenv("BEARER_TOKEN"))
+    # stream rule add to follow LoLDev
+    await stream.add_rules(tweepy.StreamRule("from:LoLDev"))
+    stream.filter()
     print('Logged on as {0}!'.format(client.user))
     await client.change_presence(
         status=discord.Status.online,
         activity=discord.Game("Running away from Teemo")
     )
 
+class AsyncStreamingClient(tweepy.asynchronous.AsyncStreamingClient):
+    async def on_tweet(self, tweet):
+        print(tweet.data)
+        # Dynamically grab username of tweets
+        #author_username = twitter_client.get_tweet(id=tweet.id, expansions="author_id", 
+        #                                            user_fields="username", tweet_fields="entities").includes["users"][-1]
+        tweet_include = twitter_client.get_tweet(id=tweet.id, expansions=[ "attachments.media_keys"], media_fields=["url"]).includes
+        
+        link = "https://www.twitter.com/LoLDev/status/" + str(tweet.id)
+        channel = client.get_channel(int(os.getenv("GENERAL_CHANNEL")))
+        await channel.send(link)
+        if "media" in tweet_include:
+            for media in tweet_include["media"]:
+                if media.type == "photo":
+                    await channel.send(media.url)
 
-class AsyncStream(tweepy.asynchronous.AsyncStream):
-    async def on_status(self, status):
-        # Checks to make sure the user is actually @LoLDev
-        if status.user.id == 1405644969675681794:
-            # creates the url to be posted to discord
-            link = "https://www.twitter.com/" + status.user.screen_name + "/status/" + status.id_str
-            channel = client.get_channel(int(os.getenv("CHANNEL")))
-            await channel.send(link)
+    async def on_connect(self):
+        print("Stream has connected")
 
-    async def on_disconnect_message(self, message):
-        print("Stream has disconnected: " + message)
+    async def on_disconnect(self):
+        print("Stream has disconnected")
 
     async def on_connection_error(self):
         print("Stream could not connect")
+    
 
-# Start the stream
-stream = AsyncStream(os.getenv("CONSUMER_KEY"), os.getenv("CONSUMER_KEY_SECRET"),
-                     os.getenv("ACCESS_TOKEN"), os.getenv("ACCESS_TOKEN_SECRET"))
-# Follows the @LoLDev (follow=["1405644969675681794"])
-stream.filter(follow=["1405644969675681794"])
 client.run(os.getenv("DISCORD_TOKEN"))
